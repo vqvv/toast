@@ -1,6 +1,18 @@
 local Toast = {}
 
-function Toast:CreateToast(message, duration)
+function Toast:CreateToast(message, positionArg, durationArg)
+    local position = "top"
+    local duration = 3
+
+    -- Handle parameter overloading
+    if type(positionArg) == "number" then
+        duration = positionArg
+        position = "top"
+    else
+        position = positionArg or "top"
+        duration = durationArg or 3
+    end
+
     local ScreenGui = Instance.new("ScreenGui")
     local ToastFrame = Instance.new("Frame")
     local UICorner = Instance.new("UICorner")
@@ -16,7 +28,9 @@ function Toast:CreateToast(message, duration)
     ToastFrame.AnchorPoint = Vector2.new(0.5, 0)
     ToastFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     ToastFrame.BackgroundTransparency = 0.2
-    ToastFrame.Position = UDim2.new(0.5, 0, 0, 10)
+    ToastFrame.Position = position == "bottom" 
+        and UDim2.new(0.5, 0, 1, -10)  -- Bottom position
+        or UDim2.new(0.5, 0, 0, 10)     -- Top position
     ToastFrame.Size = UDim2.new(0, 300, 0, 50)
     ToastFrame.BorderSizePixel = 0
     ToastFrame.ClipsDescendants = true
@@ -44,13 +58,14 @@ function Toast:CreateToast(message, duration)
 
     ToastFrame.BackgroundTransparency = 1
     MessageLabel.TextTransparency = 1
+    
     local tweenService = game:GetService("TweenService")
     local fadeInTween = tweenService:Create(ToastFrame, TweenInfo.new(0.5), {BackgroundTransparency = 0.2})
     local textFadeInTween = tweenService:Create(MessageLabel, TweenInfo.new(0.5), {TextTransparency = 0})
     fadeInTween:Play()
     textFadeInTween:Play()
 
-    task.delay(duration or 3, function()
+    task.delay(duration, function()
         local fadeOutTween = tweenService:Create(ToastFrame, TweenInfo.new(0.5), {BackgroundTransparency = 1})
         local textFadeOutTween = tweenService:Create(MessageLabel, TweenInfo.new(0.5), {TextTransparency = 1})
         fadeOutTween:Play()
