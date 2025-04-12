@@ -1,129 +1,154 @@
+-- Toast.lua 🍞
 local Toast = {}
 
 local TweenService = game:GetService("TweenService")
 local TextService = game:GetService("TextService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+-- Player instance handling with fallbacks
+local localPlayer
+if RunService:IsClient() then
+	localPlayer = Players.LocalPlayer or Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+else
+	localPlayer = nil
+end
+
 local CoreGui = game:GetService("CoreGui")
 
+-- Toast counter for z-index management
+local toastCounter = 0
+local MAX_TOASTS = 5
+
 local Themes = {
-    Dark = {
-        Background = Color3.fromRGB(30, 30, 30),
-        Border = Color3.fromRGB(255, 255, 255),
-        Text = Color3.fromRGB(235, 235, 235),
-        Icon = Color3.fromRGB(100, 180, 255),
-        Progress = Color3.fromRGB(100, 180, 255),
-        ProgressBg = Color3.fromRGB(60, 60, 60)
-    },
-    Light = {
-        Background = Color3.fromRGB(240, 240, 240),
-        Border = Color3.fromRGB(0, 0, 0),
-        Text = Color3.fromRGB(30, 30, 30),
-        Icon = Color3.fromRGB(0, 120, 255),
-        Progress = Color3.fromRGB(0, 120, 255),
-        ProgressBg = Color3.fromRGB(220, 220, 220)
-    }
+	Dark = {
+		Background = Color3.fromRGB(30, 30, 30),
+		Stroke = Color3.fromRGB(30, 30, 30),
+		Text = Color3.fromRGB(255, 255, 255)
+	},
+	Light = {
+		Background = Color3.fromRGB(245, 245, 245),
+		Stroke = Color3.fromRGB(245, 245, 245),
+		Text = Color3.fromRGB(30, 30, 30)
+	}
 }
 
-function Toast:CreateToast(message, positionArg, durationArg, themeArg)
-    local position = "top"
-    local duration = 5
-    local theme = Themes.Dark
+function Toast:CreateToast(message, duration, themeArg)
+	-- Parameter validation
+	if type(message) ~= "string" then
+		warn("❌ Invalid message type! Expected string, got:", type(message))
+		return
+	end
 
-    if type(positionArg) == "string" then
-        position = positionArg:lower()
-        duration = durationArg or duration
-    elseif type(positionArg) == "number" then
-        duration = positionArg
-    end
+	duration = math.clamp(tonumber(duration) or 5, 0.5, 60)
+	local theme = Themes[themeArg] or Themes.Dark
 
-    if type(themeArg) == "string" and Themes[themeArg] then
-        theme = Themes[themeArg]
-    end
+	-- Z-index management
+	toastCounter = (toastCounter % MAX_TOASTS) + 1
+	local baseZIndex = 100 + (toastCounter * 10)
 
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "ToastNotification"
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    ScreenGui.Parent = CoreGui
+	-- GUI container
+	local ScreenGui = Instance.new("ScreenGui")
+	ScreenGui.Name = "ToastNotification_" .. toastCounter
+	ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+	ScreenGui.ResetOnSpawn = false
+	ScreenGui.DisplayOrder = baseZIndex
 
-    local ToastFrame = Instance.new("Frame")
-    ToastFrame.Size = UDim2.new(0, 320, 0, 70)
-    ToastFrame.AnchorPoint = Vector2.new(0.5, 0)
-    ToastFrame.Position = position == "bottom" and UDim2.new(0.5, 0, 1, -80) or UDim2.new(0.5, 0, 0, 10)
-    ToastFrame.BackgroundColor3 = theme.Background
-    ToastFrame.BackgroundTransparency = 1
-    ToastFrame.BorderSizePixel = 0
-    ToastFrame.Parent = ScreenGui
+	-- Parent handling with fallbacks
+	local success, errorMsg = pcall(function()
+		if localPlayer and localPlayer:FindFirstChild("PlayerGui") then
+			ScreenGui.Parent = localPlayer.PlayerGui
+		else
+			ScreenGui.Parent = CoreGui
+		end
+	end)
 
-    Instance.new("UICorner", ToastFrame).CornerRadius = UDim.new(0, 12)
+	if not success then
+		warn("❌ Failed to parent Toast GUI:", errorMsg)
+		return
+	end
 
-    local Border = Instance.new("UIStroke", ToastFrame)
-    Border.Color = theme.Border
-    Border.Transparency = 1
-    Border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	-- Size and position calculations
+	local font = Enum.Font.Gotham
+	local textSize = 16  -- Increased text size
+	local maxWidth = 500  -- Wider toast
+	local padding = 40    -- Increased padding
 
-    local Icon = Instance.new("ImageLabel")
-    Icon.Size = UDim2.new(0, 24, 0, 24)
-    Icon.Position = UDim2.new(0, 12, 0.5, -12)
-    Icon.Image = "rbxassetid://7072716662"
-    Icon.BackgroundTransparency = 1
-    Icon.ImageColor3 = theme.Icon
-    Icon.Parent = ToastFrame
+	local textBounds = TextService:GetTextSize(message, textSize, font, Vector2.new(maxWidth, math.huge))
+	local totalHeight = math.max(44, textBounds.Y + 30)  -- Taller minimum height
 
-    local TextLabel = Instance.new("TextLabel")
-    TextLabel.Size = UDim2.new(1, -48, 1, -20)
-    TextLabel.Position = UDim2.new(0, 44, 0, 10)
-    TextLabel.Text = message
-    TextLabel.Font = Enum.Font.GothamBold
-    TextLabel.TextColor3 = theme.Text
-    TextLabel.TextSize = 17
-    TextLabel.TextWrapped = true
-    TextLabel.TextTransparency = 1
-    TextLabel.BackgroundTransparency = 1
-    TextLabel.Parent = ToastFrame
+	local ToastFrame = Instance.new("Frame")
+	ToastFrame.Size = UDim2.new(0, maxWidth + padding * 2, 0, totalHeight)
+	ToastFrame.AnchorPoint = Vector2.new(0.5, 0)
+	ToastFrame.Position = UDim2.new(0.5, 0, 0, 20 + ((toastCounter - 1) * (totalHeight + 40)))  -- Increased spacing
+	ToastFrame.BackgroundColor3 = theme.Background
+	ToastFrame.BackgroundTransparency = 1
+	ToastFrame.BorderSizePixel = 0
+	ToastFrame.ZIndex = baseZIndex
+	ToastFrame.Parent = ScreenGui
 
-    local ProgressBar = Instance.new("Frame")
-    ProgressBar.Size = UDim2.new(1, -24, 0, 3)
-    ProgressBar.Position = UDim2.new(0, 12, 1, -8)
-    ProgressBar.BackgroundColor3 = theme.ProgressBg
-    ProgressBar.BorderSizePixel = 0
-    ProgressBar.AnchorPoint = Vector2.new(0, 1)
-    ProgressBar.Parent = ToastFrame
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 14)  -- Slightly larger corner radius
+	corner.Parent = ToastFrame
 
-    local Fill = Instance.new("Frame")
-    Fill.Size = UDim2.new(1, 0, 1, 0)
-    Fill.BackgroundColor3 = theme.Progress
-    Fill.BorderSizePixel = 0
-    Fill.Parent = ProgressBar
+	local Stroke = Instance.new("UIStroke")
+	Stroke.Color = theme.Stroke
+	Stroke.Thickness = 2  -- Thicker stroke
+	Stroke.Transparency = 1
+	Stroke.Parent = ToastFrame
 
-    -- Tweens
-    local enterTween = TweenService:Create(ToastFrame, TweenInfo.new(0.6, Enum.EasingStyle.Cubic), {
-        BackgroundTransparency = 0.1
-    })
+	-- Text label setup
+	local TextLabel = Instance.new("TextLabel")
+	TextLabel.Size = UDim2.new(1, -padding * 2, 1, -padding)
+	TextLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+	TextLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	TextLabel.Text = message
+	TextLabel.Font = font
+	TextLabel.TextColor3 = theme.Text
+	TextLabel.TextSize = textSize
+	TextLabel.TextWrapped = true
+	TextLabel.TextXAlignment = Enum.TextXAlignment.Center
+	TextLabel.TextYAlignment = Enum.TextYAlignment.Center
+	TextLabel.BackgroundTransparency = 1
+	TextLabel.RichText = true
+	TextLabel.TextTransparency = 1
+	TextLabel.ZIndex = baseZIndex + 1
+	TextLabel.Parent = ToastFrame
 
-    local strokeIn = TweenService:Create(Border, TweenInfo.new(0.6), {Transparency = 0})
-    local textFade = TweenService:Create(TextLabel, TweenInfo.new(0.6), {TextTransparency = 0})
-    local progressTween = TweenService:Create(Fill, TweenInfo.new(duration - 1, Enum.EasingStyle.Linear), {
-        Size = UDim2.new(0, 0, 1, 0)
-    })
+	-- Animation functions
+	local function tween(obj, props, time, style)
+		local tweenInfo = TweenInfo.new(time or 0.3, style or Enum.EasingStyle.Quad)
+		local tween = TweenService:Create(obj, tweenInfo, props)
+		tween:Play()
+		return tween
+	end
 
-    enterTween:Play()
-    strokeIn:Play()
-    textFade:Play()
-    progressTween:Play()
+	-- Animate in
+	local entranceTweens = {
+		tween(ToastFrame, {BackgroundTransparency = 0}),
+		tween(Stroke, {Transparency = 0}),
+		tween(TextLabel, {TextTransparency = 0})
+	}
 
-    task.delay(duration, function()
-        local leaveTween = TweenService:Create(ToastFrame, TweenInfo.new(0.5, Enum.EasingStyle.Cubic), {
-            BackgroundTransparency = 1
-        })
-        local strokeOut = TweenService:Create(Border, TweenInfo.new(0.5), {Transparency = 1})
-        local textOut = TweenService:Create(TextLabel, TweenInfo.new(0.5), {TextTransparency = 1})
+	-- Cleanup sequence
+	task.delay(duration, function()
+		-- Animate out
+		local exitTweens = {
+			tween(ToastFrame, {BackgroundTransparency = 1}),
+			tween(Stroke, {Transparency = 1}),
+			tween(TextLabel, {TextTransparency = 1})
+		}
 
-        leaveTween:Play()
-        strokeOut:Play()
-        textOut:Play()
+		-- Wait for exit animations to complete
+		exitTweens[1].Completed:Wait()
 
-        leaveTween.Completed:Wait()
-        ScreenGui:Destroy()
-    end)
+		-- Safe destruction
+		pcall(function()
+			ScreenGui:Destroy()
+			toastCounter = toastCounter - 1
+			print("✅ Toast destroyed")
+		end)
+	end)
 end
 
 return Toast
